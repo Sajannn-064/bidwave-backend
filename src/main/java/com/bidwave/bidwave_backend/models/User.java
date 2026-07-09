@@ -1,5 +1,7 @@
 package com.bidwave.bidwave_backend.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -31,6 +33,7 @@ public class User {
     private String email;
 
     // stores BCrypt hashed password — never plain text
+    @JsonIgnore
     @Column(name = "password", nullable = false)
     private String password;
 
