@@ -1,64 +1,57 @@
 package com.bidwave.bidwave_backend.config;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.messaging.Message;
-import org.springframework.messaging.MessageChannel;
-import org.springframework.messaging.support.ChannelInterceptor;
-import org.springframework.messaging.simp.stomp.StompCommand;
-import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.http.server.ServerHttpRequest;
+import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.stereotype.Component;
+import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.server.HandshakeInterceptor;
+
+import java.util.Map;
 
 // @Component — marks this as a Spring Bean so it can be injected/registered
 // @RequiredArgsConstructor — Lombok generates the constructor for final fields (jwtUtil)
 @Component
 @RequiredArgsConstructor
-public class JwtHandshakeInterceptor implements ChannelInterceptor {
+public class JwtHandshakeInterceptor implements HandshakeInterceptor {
 
     // injected — reuses the same JwtUtil already used by JwtAuthFilter
     private final JwtUtil jwtUtil;
 
+    // runs once, during the plain HTTP handshake, before the socket upgrades
     @Override
-    public Message<?> preSend(Message<?> message, MessageChannel channel) {
+    public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
+                                    WebSocketHandler wsHandler, Map<String, Object> attributes) {
 
-        // wrap raw message into STOMP-aware accessor — gives access to command + headers
-        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
+        // browsers can't send custom headers on a raw WebSocket handshake,
+        // so the token travels as a query parameter instead: ws://.../ws?token=xxx
+        String query = request.getURI().getQuery();
 
-        // only check identity on the initial CONNECT frame — not every message after
-        if (StompCommand.CONNECT.equals(accessor.getCommand())) {
+        if (query != null && query.contains("token=")) {
 
-            // read custom Authorization header sent by client on CONNECT
-            String authHeader = accessor.getFirstNativeHeader("Authorization");
+            // pull the raw token value out of the query string
+            String token = query.substring(query.indexOf("token=") + 6);
 
-            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            // extract username from token payload
+            String username = jwtUtil.extractUsername(token);
 
-                // strip "Bearer " prefix to get raw token string
-                String token = authHeader.substring(7);
+            // validate signature + expiry + username match
+            if (jwtUtil.validateToken(token, username)) {
 
-                // extract username from token payload
-                String username = jwtUtil.extractUsername(token);
-
-                // validate signature + expiry + username match
-                if (jwtUtil.validateToken(token, username)) {
-
-                    // build Principal — credentials null (token already trusted), no authorities yet
-                    UsernamePasswordAuthenticationToken authentication =
-                            new UsernamePasswordAuthenticationToken(username, null, null);
-
-                    // attach identity to this STOMP session — persists for the whole connection
-                    accessor.setUser(authentication);
-
-                } else {
-                    // invalid/expired token — reject the handshake
-                    throw new RuntimeException("Invalid or expired token");
-                }
-
-            } else {
-                // no Authorization header present — reject the handshake
-                throw new RuntimeException("Missing Authorization header on CONNECT");
+                // store username in session attributes — read later by JwtHandshakeHandler
+                attributes.put("username", username);
+                return true; // allow handshake to continue
             }
         }
 
-        return message;
+        // no valid token — reject the handshake entirely
+        return false;
+    }
+
+    // runs after handshake completes — nothing needed here
+    @Override
+    public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
+                                WebSocketHandler wsHandler, Exception exception) {
     }
 }
