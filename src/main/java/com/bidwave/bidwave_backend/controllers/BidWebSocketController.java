@@ -29,25 +29,28 @@ public class BidWebSocketController {
     private final SimpMessagingTemplate messagingTemplate;
 
     // fires when a client sends a STOMP message to /app/bid.place
-    @MessageMapping("/bid.place")
-    public void placeBid(@Payload BidRequest bidRequest, Principal principal) {
+@MessageMapping("/bid.place")
+public void placeBid(@Payload BidRequest bidRequest, Principal principal) {
 
-        // get the verified username from the authenticated STOMP session
-        String username = principal.getName();
+    String username = principal.getName();
 
-        // look up the real User entity — never trust a client-supplied bidderId
-        User bidder = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+    User bidder = userRepository.findByUsername(username)
+            .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // delegate to existing service — same validation rules as REST path
+    try {
         Bid savedBid = bidService.placeBid(
                 bidRequest.getAuctionId(),
                 bidder.getId(),
                 bidRequest.getAmount()
         );
 
-        // broadcast the new bid to everyone subscribed to this auction's topic
         String destination = "/topic/auction." + savedBid.getAuction().getId();
         messagingTemplate.convertAndSend(destination, savedBid);
+
+    } catch (RuntimeException e) {
+        // send the error back to ONLY the user who placed the bad bid,
+        // not broadcast to everyone watching the auction
+        messagingTemplate.convertAndSendToUser(username, "/queue/errors", e.getMessage());
     }
+}
 }
