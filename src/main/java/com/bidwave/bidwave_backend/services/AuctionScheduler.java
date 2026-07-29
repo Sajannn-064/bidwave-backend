@@ -1,6 +1,5 @@
-package com.bidwave.bidwave_backend.services;
 
-public package com.bidwave.bidwave_backend.services;
+package com.bidwave.bidwave_backend.services;
 
 import com.bidwave.bidwave_backend.models.Auction;
 import com.bidwave.bidwave_backend.repositories.AuctionRepository;
@@ -30,6 +29,5 @@ public class AuctionScheduler {
             }
         }
     }
-} {
-    
-}
+ }
+
