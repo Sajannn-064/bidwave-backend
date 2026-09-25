@@ -186,4 +186,4 @@ Every part of this backend has been verified through a proper local deployment r
 
 ## License
 
-Built for academic purposes. Feel free to use it as a reference for your own learning.
+Feel free to use it as a reference for your own learning.
